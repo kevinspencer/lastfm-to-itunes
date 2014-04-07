@@ -60,6 +60,7 @@ sub get_tracks_from_lastfm {
     my $data = decode_json($response->content());
     die "ERROR $data->{error}: $data->{message}\n" if ($data->{error});
 
+    binmode STDOUT, ":utf8";
     for my $track (@{$data->{tracks}{track}}) {
         print "$track->{artist}{name}, $track->{name}, $track->{playcount}\n";
     }
