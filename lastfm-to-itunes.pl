@@ -18,13 +18,17 @@ use URI;
 use strict;
 use warnings;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 $Data::Dumper::Indent = 1;
 
-my $user    = ''; # last.fm username
-my $api_key = ''; # last.fm api key
+my $user    = '';
+my $api_key = '';
 my $api_url = 'http://ws.audioscrobbler.com/2.0/';
+
+my $playcount_threshold = 2; # ignore any tracks <= this count
+my $lastfm_track_file   = '/tmp/lastfm.csv';
+unlink($lastfm_track_file) if (-e $lastfm_track_file);
 
 get_tracks_from_lastfm();
 
@@ -60,16 +64,29 @@ sub get_tracks_from_lastfm {
     my $data = decode_json($response->content());
     die "ERROR $data->{error}: $data->{message}\n" if ($data->{error});
 
-    binmode STDOUT, ":utf8";
+    open(my $fh, ">>:utf8", $lastfm_track_file) || die "Could not write to $lastfm_track_file - $!\n";
+    my $current_page_playcount;
     for my $track (@{$data->{tracks}{track}}) {
-        print "$track->{artist}{name}, $track->{name}, $track->{playcount}\n";
+        $current_page_playcount = $track->{playcount};
+        print "$current_page_playcount - $playcount_threshold\n";
+        last if ($current_page_playcount <= $playcount_threshold);
+        print $fh "$track->{artist}{name}, $track->{name}, $track->{playcount}\n";
     }
+    close($fh);
 
     my $current_page = $data->{tracks}{'@attr'}{page};
     my $end_page     = $data->{tracks}{'@attr'}{totalPages};
+
     # if we've no more pages to request we're all done...
     return if ($current_page == $end_page);
+    # we're also done if we're at the low playcount threshold
+    return if ($current_page_playcount <= $playcount_threshold);
+
     # otherwise, get the next page...
     $current_page++;
+    undef $uri;
+    undef $ua;
+    undef $response;
+    undef $data;
     get_tracks_from_lastfm($current_page);
 }
